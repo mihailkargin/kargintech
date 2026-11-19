@@ -1,0 +1,182 @@
+{
+  "name": "Сообщения сайта в Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "c5000000-0000-4000-8000-000000000001",
+      "name": "Каждые 2 минуты",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        0
+      ],
+      "notes": "Сайт складывает сообщения клиентам (новые тендеры, готовые расчёты, лучшие дня) в очередь. Ключ бота есть только в n8n, поэтому отправляет n8n."
+    },
+    {
+      "parameters": {
+        "url": "=http://site:3200/internal/outbox",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "c5000000-0000-4000-8000-000000000002",
+      "name": "Взять очередь",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Одно сообщение - один элемент. Пустая очередь - тихая остановка.\nconst r = $json || {};\nconst список = Array.isArray(r.сообщения) ? r.сообщения : [];\nreturn список.filter((с) => с && с.chatId && с.text).map((с) => ({ json: { id: с.id, chatId: String(с.chatId), text: String(с.text) } }));"
+      },
+      "id": "c5000000-0000-4000-8000-000000000003",
+      "name": "Разложить",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "c5000000-0000-4000-8000-000000000004",
+      "name": "Отправить",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Ошибка одного сообщения (клиент заблокировал бота) не останавливает остальные. Неподтверждённое сайт выдаст снова, не больше 5 раз."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Подтверждаем только отправленные: у неудачных в выходе есть error.\nconst взятые = $('Разложить').all();\nconst ids = $input.all().map((it, i) => (!it.json || it.json.error ? null : (взятые[i] && взятые[i].json.id))).filter((x) => x != null);\nreturn [{ json: { ids } }];"
+      },
+      "id": "c5000000-0000-4000-8000-000000000005",
+      "name": "Отправленные",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://site:3200/internal/outbox/ack",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ ids: $json.ids }) }}",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "c5000000-0000-4000-8000-000000000006",
+      "name": "Подтвердить",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Каждые 2 минуты": {
+      "main": [
+        [
+          {
+            "node": "Взять очередь",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Взять очередь": {
+      "main": [
+        [
+          {
+            "node": "Разложить",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Разложить": {
+      "main": [
+        [
+          {
+            "node": "Отправить",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Отправить": {
+      "main": [
+        [
+          {
+            "node": "Отправленные",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Отправленные": {
+      "main": [
+        [
+          {
+            "node": "Подтвердить",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

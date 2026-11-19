@@ -1,0 +1,159 @@
+{
+  "name": "KarginTech — рейтинг тендеров",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 11,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "c4000000-0000-4000-8000-000000000001",
+      "name": "Расписание",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-240, 0],
+      "notes": "Через два часа после поиска (воркфлоу-1, 09:00): за это время фоновый разбор проходит документацию новых тендеров. На портал этот воркфлоу не ходит — приложение читает готовые разборы с диска, поэтому запускать его можно сколько угодно раз."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Имя файла настроек клиента на сервере (/data/clients/<имя>.json).\n// Настройки сюда не добавлять: присланное перебило бы файл.\nreturn [{ json: { клиент: 'kargin' } }];\n"
+      },
+      "id": "c4000000-0000-4000-8000-000000000002",
+      "name": "Настройки клиента",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:3100/rating",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ клиент: $json.клиент }) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "c4000000-0000-4000-8000-000000000003",
+      "name": "Собрать рейтинг",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Текст рейтинга — клиенту, файл со всем списком — следом.\n// Сбой — владельцу. Пустой рейтинг (нечего показать) — молчим, это штатно.\nconst r = $json;\nconst владельцу = (r && r.ownerChatId) || '';\nconst клиенту = (r && r.clientChatId) || '';\n\nif (!r || r.ok !== true) {\n  return [{ json: { естьФайл: false, chatId: владельцу,\n    text: '🚨 <b>СБОЙ СЕРВИСА: рейтинг не собран</b>\\n' + ((r && r.сбой) || 'приложение не ответило')\n      + '\\n\\n<i>' + new Date().toISOString() + '</i>' } }];\n}\nconsole.log((r.журнал || []).join('\\n'));\nif (r.пусто) return [];\n\nreturn [{\n  json: { естьФайл: true, chatId: клиенту, text: r.текст, fileName: r.файл.имя },\n  binary: {\n    data: {\n      data: r.файл.base64,\n      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n      fileName: r.файл.имя,\n      fileExtension: 'xlsx'\n    }\n  }\n}];\n"
+      },
+      "id": "c4000000-0000-4000-8000-000000000004",
+      "name": "Подготовить отправку",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "c4000000-0000-4000-8000-000000000005",
+      "name": "Рейтинг текстом",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [720, -110],
+      "notes": "Разметка HTML обязательна: группы звёзд свёрнуты тегом <blockquote expandable>, при другом режиме теги придут видимыми."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-file",
+              "leftValue": "={{ $json.естьФайл }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "c4000000-0000-4000-8000-000000000006",
+      "name": "Есть файл?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 110]
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "={{ $json.chatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "Полный список тендеров с расчётом",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c4000000-0000-4000-8000-000000000007",
+      "name": "Список файлом",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [960, 110]
+    }
+  ],
+  "connections": {
+    "Расписание": {
+      "main": [[{ "node": "Настройки клиента", "type": "main", "index": 0 }]]
+    },
+    "Настройки клиента": {
+      "main": [[{ "node": "Собрать рейтинг", "type": "main", "index": 0 }]]
+    },
+    "Собрать рейтинг": {
+      "main": [[{ "node": "Подготовить отправку", "type": "main", "index": 0 }]]
+    },
+    "Подготовить отправку": {
+      "main": [[
+        { "node": "Рейтинг текстом", "type": "main", "index": 0 },
+        { "node": "Есть файл?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Есть файл?": {
+      "main": [[{ "node": "Список файлом", "type": "main", "index": 0 }], []]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true
+  },
+  "pinData": {}
+}

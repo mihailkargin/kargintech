@@ -1,0 +1,59 @@
+# HTTPS и сертификат Let's Encrypt получаются автоматически.
+# Отдельный веб-сервер нужен потому, что n8n сам по себе работает по HTTP,
+# а пускать панель управления с доступами клиентов в открытом виде нельзя.
+
+{$N8N_HOST} {
+	tls {$LETSENCRYPT_EMAIL}
+
+	# Панель n8n. Сюда заходит только владелец сервиса.
+	reverse_proxy n8n:5678 {
+		# n8n держит длинные соединения для живого обновления интерфейса.
+		flush_interval -1
+	}
+
+	# Заголовки, закрывающие самые очевидные способы добраться до панели
+	# через чужую страницу.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	encode gzip
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
+
+# Сайт для клиентов (21.10.2026). www перенаправляется на основной адрес.
+www.kargintech.ru {
+	tls {$LETSENCRYPT_EMAIL}
+	redir https://kargintech.ru{uri} permanent
+}
+
+kargintech.ru {
+	tls {$LETSENCRYPT_EMAIL}
+	# Внутренние точки сайта (Telegram, очередь сообщений) - только для n8n
+	# изнутри docker-сети. Снаружи их нет; сайт проверяет это и сам.
+	respond /internal/* 404
+	reverse_proxy site:3200
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	encode gzip
+	log {
+		output file /data/site-access.log {
+			roll_size 10MiB
+			roll_keep 5
+			# Политика ПДн: журнал с адресами посетителей - не дольше 6 месяцев.
+			roll_keep_for 4320h
+		}
+	}
+}

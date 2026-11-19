@@ -1,0 +1,51 @@
+# --- Документы и материалы не для репозитория ---
+*.docx
+*.pdf
+*.pptx
+_архив/
+/*.png
+
+# --- Служебное ---
+.claude/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# --- Данные и секреты: никогда не коммитить ---
+.env
+*.pem
+*.key
+*.pfx
+*.p12
+app_data/
+site_data/
+n8n_data/
+db_data/
+node_modules/
+
+# --- Боевые настройки клиентов: только шаблон, остальное на сервере ---
+deploy/clients/*
+!deploy/clients/client-example.json
+
+# --- Внутренние рабочие документы: в репозиторий не идут ---
+AGENTS.md
+CLAUDE.md
+ЖУРНАЛ*.md
+ДОРОЖНАЯ-КАРТА.md
+ТЗ-*.md
+БИЗНЕС-ПЛАН.md
+БЕЗОПАСНОСТЬ.md
+ВЕРОЯТНОСТИ-ЦЕНЫ.md
+ВОПРОСЫ-ДЛЯ-БИЗНЕС-МОДЕЛИ.md
+КАК-РАБОТАТЬ.md
+ОТЧЁТ-О-ГОТОВНОСТИ.md
+САЙТ-СТРУКТУРА.md
+ШПАРГАЛКА-ДЛЯ-ПРОДАЖ.md
+ФОРМУЛЫ-РАСЧЁТА.md
+СДЕЛАТЬ-КОПИЮ.ps1
+_probe/
+deploy/MOVE-NEW-SERVER.md
+deploy/README.md
+deploy/abroad/README.md
+БИЗНЕС-МОДЕЛЬ.md

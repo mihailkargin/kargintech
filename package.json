@@ -1,0 +1,31 @@
+{
+  "name": "tender-automation",
+  "version": "0.1.0",
+  "description": "Мониторинг и первичный анализ закупок ЕИС",
+  "private": true,
+  "scripts": {
+    "test": "node tests/test-patterns.js && node tests/test-routes.js && node tests/run-tests.js && node tests/test-docs-page.js && node tests/test-logic.js && node tests/test-scoring.js && node tests/test-redact.js && node tests/test-extract-text.js && node tests/test-extract.js && node tests/test-nmck-table.js && node tests/test-pdf-extract.js && node tests/test-pricing.js && node tests/test-price-list.js && node tests/test-logistics.js && node tests/test-estimate-xlsx.js && node tests/test-suppliers.js && node tests/test-protocol.js && node tests/test-app.js && node tests/test-notify.js && node tests/test-caption.js && node tests/test-verify.js && node tests/test-spec.js && node tests/test-parse-queue.js && node tests/test-rating.js && node tests/test-rating-digest.js && node tests/test-okpd.js",
+    "test:patterns": "node tests/test-patterns.js",
+    "test:routes": "node tests/test-routes.js",
+    "test:parser": "node tests/run-tests.js",
+    "test:docs": "node tests/test-docs-page.js",
+    "test:logic": "node tests/test-logic.js",
+    "test:scoring": "node tests/test-scoring.js",
+    "test:redact": "node tests/test-redact.js",
+    "test:text": "node tests/test-extract-text.js",
+    "test:extract": "node tests/test-extract.js",
+    "test:nmck": "node tests/test-nmck-table.js",
+    "test:pdf": "node tests/test-pdf-extract.js",
+    "test:pricing": "node tests/test-pricing.js",
+    "test:price-list": "node tests/test-price-list.js",
+    "test:logistics": "node tests/test-logistics.js",
+    "test:xlsx": "node tests/test-estimate-xlsx.js",
+    "test:suppliers": "node tests/test-suppliers.js",
+    "test:protocol": "node tests/test-protocol.js",
+    "test:app": "node tests/test-app.js",
+    "test:notify": "node tests/test-notify.js",
+    "test:caption": "node tests/test-caption.js",
+    "test:verify": "node tests/test-verify.js",
+    "dump": "node tests/dump.js"
+  }
+}

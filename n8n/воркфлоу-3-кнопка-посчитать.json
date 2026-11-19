@@ -1,0 +1,354 @@
+{
+  "name": "KarginTech — кнопка «Посчитать смету»",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "callback_query",
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "d3000000-0000-4000-8000-000000000001",
+      "name": "Нажатие кнопки",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        0
+      ],
+      "notes": "Срабатывает на нажатие «Рассчитать» под сообщением о тендере и на сообщение /start <код> - подключение Telegram из кабинета на сайте (21.10.2026)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n//  ЧТО НАЖАЛИ\n// ============================================================\n//\n// Telegram присылает callback_data из кнопки — строку вида «смета:0348…».\n// Больше 64 байт туда не помещается, поэтому там только номер закупки.\n// Адрес карточки приложение найдёт у себя: оно сохранило его в момент,\n// когда нашло этот тендер. По номеру портал не ищет — проверено 03.10.2026.\n\n// ТОЛЬКО НАЖАТИЕ КНОПКИ. Найдено 16.10.2026: при запуске воркфлоу из\n// редактора n8n (или на пробных данных) сюда приходит не нажатие, номер\n// чата пустой, и следующий блок падал с «chat_id пуст». Не нажатие — не\n// наше событие: возвращаем пустой список, и воркфлоу тихо останавливается.\nconst u = $json || {};\n\n// ПОДКЛЮЧЕНИЕ TELEGRAM С САЙТА (21.10.2026). Клиент получает в кабинете\n// одноразовый код и отправляет боту «/start КОД». Код проверяет сайт: здесь\n// только достаём его и номер чата. Любое другое сообщение - не наше событие.\nconst м = (u.message && u.data === undefined && !u.callback_query) ? u.message\n  : (u.text !== undefined && u.chat && u.data === undefined ? u : null);\nif (м) {\n  const р = String(м.text || '').trim().match(/^\\/start\\s+([A-Za-z0-9]{10})$/);\n  const чатП = String((м.chat && м.chat.id) || '');\n  if (!р || !чатП) return [];\n  return { json: { вид: 'привязка', код: р[1].toUpperCase(), chatId: чатП } };\n}\nconst q = u.callback_query || (u.data !== undefined && u.message ? u : null);\nif (!q) return [];\nconst данные = String(q.data || '');\nconst чат = String((q.message && q.message.chat && q.message.chat.id) || (q.from && q.from.id) || '');\nif (!чат || данные.indexOf('смета:') !== 0) return [];\n\nreturn {\n  json: {\n    вид: 'смета',\n    годится: true,\n    номер: данные.slice('смета:'.length).trim(),\n    chatId: чат,\n    // Кого считаем. Пока один клиент; когда станет больше — здесь будет\n    // сопоставление чата с клиентом.\n    клиент: 'kargin',\n    // Чтобы кнопка перестала «крутиться» в интерфейсе Telegram.\n    callbackId: String(q.id || '')\n  }\n};"
+      },
+      "id": "d3000000-0000-4000-8000-000000000002",
+      "name": "Что нажали",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=⏳ Считаю смету по закупке {{ $json.номер }}. Это займёт пару минут: скачиваю документацию, читаю спецификацию и ищу поставщиков.",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "d3000000-0000-4000-8000-000000000003",
+      "name": "Сказать, что считаем",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        0
+      ],
+      "notes": "Расчёт идёт пару минут. Без этого сообщения человек решит, что кнопка не сработала, и нажмёт ещё раз — а каждое нажатие стоит денег."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:3100/estimate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ номер: $('Что нажали').first().json.номер, клиент: $('Что нажали').first().json.клиент }) }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "d3000000-0000-4000-8000-000000000004",
+      "name": "Собрать смету",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Готовим отправку: файл со сметой или понятное объяснение, почему не вышло.\nconst r = $json;\nconst чат = $('Что нажали').first().json.chatId;\nconst номер = $('Что нажали').first().json.номер;\n\nif (!r || r.ok !== true) {\n  return {\n    json: {\n      естьФайл: false,\n      chatId: чат,\n      text: '❌ <b>Не удалось посчитать закупку ' + номер + '</b>\\n\\n'\n        + ((r && r.сбой) || 'приложение не ответило')\n        + (r && r.подробно ? '\\n\\n' + r.подробно : '')\n    }\n  };\n}\n\nreturn {\n  json: {\n    естьФайл: true,\n    chatId: чат,\n    // Подпись приходит ГОТОВОЙ и безопасно обрезанной — её собирает\n        // приложение (src/notify.js, подписьДляФайла), где это покрыто\n        // проверками. Здесь стояло `.slice(0, 1000)`, и 09.10.2026 оно\n        // разорвало тег пополам: Telegram отверг сообщение целиком,\n        // клиент не получил ни текста, ни файла.\n        caption: r.подписьФайла || String(r.подпись || '').slice(0, 900),\n    fileName: r.файл.имя\n  },\n  binary: {\n    data: {\n      data: r.файл.base64,\n      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n      fileName: r.файл.имя,\n      fileExtension: 'xlsx'\n    }\n  }\n};"
+      },
+      "id": "d3000000-0000-4000-8000-000000000005",
+      "name": "Подготовить отправку",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-file",
+              "leftValue": "={{ $json.естьФайл }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "d3000000-0000-4000-8000-000000000006",
+      "name": "Смета собралась?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        940,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "={{ $json.chatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "={{ $json.caption }}",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "d3000000-0000-4000-8000-000000000007",
+      "name": "Смета файлом",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1180,
+        -110
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "d3000000-0000-4000-8000-000000000008",
+      "name": "Объяснить, что не вышло",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1180,
+        110
+      ],
+      "notes": "Молчание после нажатия — худший исход: человек не понимает, сломалось или считается. Причина называется всегда."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-link",
+              "leftValue": "={{ $json.вид }}",
+              "rightValue": "привязка",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "d3000000-0000-4000-8000-000000000101",
+      "name": "Подключение Telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -20,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://site:3200/internal/telegram-link",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ код: $json.код, chatId: $json.chatId }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "d3000000-0000-4000-8000-000000000102",
+      "name": "Проверить код на сайте",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        200,
+        -300
+      ],
+      "notes": "Сайт сам проверяет код (одноразовый, 30 минут) и запоминает чат. Адрес /internal снаружи закрыт."
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Что нажали').first().json.chatId }}",
+        "text": "={{ $json.text || 'Сайт не ответил. Попробуйте ещё раз через минуту.' }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "d3000000-0000-4000-8000-000000000103",
+      "name": "Ответить о подключении",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        -300
+      ]
+    }
+  ],
+  "connections": {
+    "Нажатие кнопки": {
+      "main": [
+        [
+          {
+            "node": "Что нажали",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Что нажали": {
+      "main": [
+        [
+          {
+            "node": "Подключение Telegram?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сказать, что считаем": {
+      "main": [
+        [
+          {
+            "node": "Собрать смету",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Собрать смету": {
+      "main": [
+        [
+          {
+            "node": "Подготовить отправку",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подготовить отправку": {
+      "main": [
+        [
+          {
+            "node": "Смета собралась?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Смета собралась?": {
+      "main": [
+        [
+          {
+            "node": "Смета файлом",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Объяснить, что не вышло",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подключение Telegram?": {
+      "main": [
+        [
+          {
+            "node": "Проверить код на сайте",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Сказать, что считаем",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверить код на сайте": {
+      "main": [
+        [
+          {
+            "node": "Ответить о подключении",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true
+  },
+  "pinData": {}
+}
